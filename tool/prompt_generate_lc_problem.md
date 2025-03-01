@@ -1,7 +1,7 @@
 Provide complete information about LeetCode problem #{problem_number}. Please include:
 
 1. The original problem statement with all details (description, constraints, examples);
-2. A Python 3 code template with the class Solution and method signature (empty function body);
+2. A Python v3.13.2 code template with the class Solution and method signature (empty function body);
 3. At least 5 test cases in the structured format showed below;
 
 ## Example Output Format

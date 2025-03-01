@@ -1,53 +1,90 @@
+# libs/linked_list.py
+
 class ListNode:
     """
-    定义一个单向链表的节点。
+    Definition for singly-linked list.
     """
+
+    def __new__(cls, val=0, next=None):
+        # 如果传入的是列表，则调用 from_list 进行转换，直接返回链表头节点
+        if isinstance(val, list):
+            return cls.from_list(val)
+        return super().__new__(cls)
+
     def __init__(self, val=0, next=None):
-        self.val = val      # 节点的值
-        self.next = next    # 指向下一个节点的指针
+        # 当 __new__ 返回的对象已经设置了 val（例如从列表转换而来），则避免重复初始化
+        if hasattr(self, 'val'):
+            return
+        self.val = val
+        self.next = next
 
-class LinkedList:
-    """
-    提供对链表的初始化、构造、打印功能。
-    """
-    def __init__(self, values=None):
+    @classmethod
+    def from_list(cls, values):
         """
-        使用一个可选的数组来初始化链表。
-        :param values: 列表或 None（默认创建空链表）
+        根据列表构造链表，并返回头节点。
+        :param values: Python list
+        :return: ListNode (head)
         """
-        self.head = None
-        if values:
-            self.head = self._build_list(values)
-
-    def _build_list(self, values):
-        """
-        内部方法：通过数组构造链表。
-        :param values: 输入的数组
-        :return: 链表的头节点
-        """
-        dummy = ListNode(0)
+        dummy = object.__new__(cls)
+        dummy.val = 0
+        dummy.next = None
         current = dummy
-        for value in values:
-            current.next = ListNode(value)
-            current = current.next
+        for x in values:
+            node = object.__new__(cls)
+            node.val = x
+            node.next = None
+            current.next = node
+            current = node
         return dummy.next
 
     def to_list(self):
         """
-        将链表转换为数组，方便调试。
-        :return: 一个数组，包含链表中的值。
+        将链表转换为 Python list。
+        :return: 包含链表所有节点值的列表
         """
         result = []
-        current = self.head
+        current = self
         while current:
             result.append(current.val)
             current = current.next
         return result
 
+
+class LinkedList:
+    """
+    辅助链表类，提供初始化、打印、转换以及创建环的功能。
+    """
+
+    def __init__(self, values=None):
+        """
+        初始化链表。如果传入的是列表，则自动转换为链表；如果传入的是 ListNode，则直接使用。
+        :param values: list 或 ListNode
+        """
+        if values is None:
+            self.head = None
+        elif isinstance(values, list):
+            self.head = ListNode.from_list(values)
+        elif isinstance(values, ListNode):
+            self.head = values
+        else:
+            raise TypeError("Unsupported type for values. Must be list or ListNode.")
+
+    def to_list(self):
+        """
+        将链表转换为 Python list。
+        :return: 包含链表中所有节点值的列表
+        """
+        if not self.head:
+            return []
+        return self.head.to_list()
+
     def print_list(self):
         """
-        打印链表的所有节点值。
+        打印链表所有节点值。
         """
+        if not self.head:
+            print("Empty list")
+            return
         current = self.head
         output = []
         while current:
@@ -57,10 +94,10 @@ class LinkedList:
 
     def add_cycle(self, pos):
         """
-        在链表中创建环，方便测试环相关的题目。
-        :param pos: 环的入口索引（从 0 开始），-1 表示不创建环
+        在链表中创建环，用于测试含环问题。
+        :param pos: 环入口的索引（从 0 开始），-1 表示不创建环
         """
-        if pos == -1:
+        if pos == -1 or not self.head:
             return
         cycle_entry = None
         current = self.head
@@ -70,4 +107,29 @@ class LinkedList:
                 cycle_entry = current
             current = current.next
             index += 1
-        current.next = cycle_entry  # 连接成环
+        current.next = cycle_entry  # 形成环
+
+
+#######################
+# 自动补丁逻辑：转换测试用例中的列表为链表
+#######################
+
+def patch_test_cases():
+    """
+    遍历 sys.modules 中的所有模块，如果模块中定义了 test_cases，
+    则自动将其中 'list1' 和 'list2'（如果为列表）转换为链表（ListNode）。
+    """
+    import sys
+    for module in sys.modules.values():
+        # 模块必须有 test_cases 属性，且 test_cases 为列表
+        if hasattr(module, 'test_cases'):
+            test_cases = getattr(module, 'test_cases')
+            if isinstance(test_cases, list):
+                for test in test_cases:
+                    for key in ['list1', 'list2']:
+                        if key in test and isinstance(test[key], list):
+                            test[key] = ListNode.from_list(test[key])
+
+
+# 在模块加载时自动调用补丁逻辑，确保测试用例的输入都转换成链表
+patch_test_cases()

@@ -3,7 +3,10 @@ import importlib
 import os
 import sys
 import inspect
-from typing import Any, Dict, List
+from typing import Any, Dict, List, get_origin, get_args
+
+# 从链表模块引入 ListNode
+from libs.linked_list import ListNode
 
 _tests_executed = False
 
@@ -58,7 +61,6 @@ def run_tests():
 
     method = getattr(solution, method_name)
     signature = inspect.signature(method)
-    param_names = list(signature.parameters.keys())
 
     # 存储所有测试结果和表情符号
     results = []
@@ -66,9 +68,8 @@ def run_tests():
     total_tests = len(test_cases)
     passed_tests = 0
 
-    # 计算最长的 case ID 长度
-    max_case_id_len = max(len(str(test_case["case_id"])) for test_case in test_cases)
-    key_width = 10  # Input/Expected/Actual 的固定宽度
+    # 固定宽度
+    key_width = 10
 
     # 执行所有测试用例
     for test_case in test_cases:
@@ -76,14 +77,33 @@ def run_tests():
         expected = test_case["expected"]
 
         args = []
-        for param_name in param_names:
+        # 利用类型注解自动转换列表参数
+        for param_name, param in signature.parameters.items():
             if param_name not in test_case:
                 results.append(f"Missing parameter {param_name} in test case {case_id}")
                 break
-            args.append(test_case[param_name])
+            arg = test_case[param_name]
+            if param.annotation is not inspect.Parameter.empty:
+                # 判断该参数是否应该是 ListNode 或 Optional[ListNode]
+                anno = param.annotation
+                origin = get_origin(anno)
+                if origin is None:
+                    # 非泛型注解，直接判断是否为 ListNode
+                    if anno is ListNode and isinstance(arg, list):
+                        arg = ListNode.from_list(arg)
+                else:
+                    # 泛型注解，如 Optional[ListNode] 通常是 Union[ListNode, NoneType]
+                    if ListNode in get_args(anno) and isinstance(arg, list):
+                        arg = ListNode.from_list(arg)
+            args.append(arg)
         else:
             try:
                 actual = method(*args)
+                # 如果返回的是链表，则转换为列表进行比较
+                if actual is None:
+                    actual = []
+                elif hasattr(actual, "to_list") and callable(actual.to_list):
+                    actual = actual.to_list()
                 passed = actual == expected
                 if passed:
                     passed_tests += 1
@@ -91,14 +111,12 @@ def run_tests():
                 else:
                     emojis.append('☹️')
 
-                # 动态计算 Case 行的 padding
                 case_label = f"Case {case_id}"
                 padding = key_width - len(case_label)
 
-                # 格式化单个测试用例的输出
                 case_output = [
                     f"{' ' * padding}{case_label} : {'✅' if passed else '☹️'}",
-                    f"{'Input':>10} : {', '.join(f'{param_names[i]} = {args[i]}' for i in range(len(args)))}",
+                    f"{'Input':>10} : {', '.join(f'{k} = {test_case[k]}' for k in signature.parameters.keys())}",
                     f"{'Expected':>10} : {expected}",
                     f"{'Actual':>10} : {actual}",
                     ""
@@ -108,23 +126,17 @@ def run_tests():
                 results.append(f"Error executing {method_name} for test case {case_id}: {e}")
                 emojis.append('☹️')
 
-    # 计算通过率
     pass_percentage = round((passed_tests / total_tests) * 100) if total_tests > 0 else 0
-
-    # 构建标题行
     title = f"LeetCode {problem_number} {''.join(emojis)}"
 
-    # 构建最终输出
     output = [
         title,
         "",
         f"{pass_percentage}% passed",
     ]
 
-    # 如果不是 100% 通过，才添加具体 Case 详情
     if pass_percentage < 100:
         output.append("")
         output.extend(results)
 
-    # 一次性打印所有内容
     print("\n".join(output))
