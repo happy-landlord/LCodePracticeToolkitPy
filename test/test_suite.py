@@ -2,7 +2,7 @@ import importlib
 import os
 import sys
 import inspect
-from typing import get_origin, get_args
+from typing import get_origin, get_args, Optional
 
 from libs.linked_list import ListNode, LinkedList
 
@@ -40,8 +40,10 @@ def convert_result(test_case, actual):
             return actual
 
 
-def convert_for_check(test_case, raw_actual):
+def convert_for_check(test_case, raw_actual, method_signature):
     expected = test_case["expected"]
+    return_annotation = method_signature.return_annotation
+
     if "pos" in test_case and not isinstance(expected, bool):
         if raw_actual is None:
             return None
@@ -56,10 +58,13 @@ def convert_for_check(test_case, raw_actual):
         return found
     else:
         if raw_actual is None:
-            # For in-place modification, return the modified head's list
-            if "head" in test_case and hasattr(test_case["head"], "to_safe_list"):
+            # 返回新链表：None 表示空链表
+            if return_annotation is ListNode or return_annotation == Optional[ListNode]:
+                return []
+            # 原地修改：检查 head 的当前状态
+            if return_annotation is None and "head" in test_case and hasattr(test_case["head"], "to_safe_list"):
                 return test_case["head"].to_safe_list()[0]
-            return None
+            return []
         if isinstance(raw_actual, ListNode):
             return raw_actual.to_safe_list()[0]
         elif hasattr(raw_actual, "to_list") and callable(raw_actual.to_list):
@@ -68,16 +73,22 @@ def convert_for_check(test_case, raw_actual):
             return raw_actual
 
 
-def convert_for_print(test_case, raw_actual, head_arg):
+def convert_for_print(test_case, raw_actual, head_arg, method_signature):
     expected = test_case["expected"]
-    if raw_actual is None and isinstance(expected, list):
-        if head_arg is not None and hasattr(head_arg, "to_safe_list"):
+    return_annotation = method_signature.return_annotation
+
+    if raw_actual is None:
+        # 返回新链表：None 表示空链表
+        if return_annotation is ListNode or return_annotation == Optional[ListNode]:
+            return []
+        # 原地修改：使用传入的 head_arg
+        if return_annotation is None and head_arg is not None and hasattr(head_arg, "to_safe_list"):
             return head_arg.to_safe_list()[0]
-        return None
+        return []
     if isinstance(raw_actual, ListNode):
         return raw_actual.to_safe_list()[0]
     elif hasattr(raw_actual, "to_list") and callable(raw_actual.to_list):
-        return actual.to_list()
+        return raw_actual.to_list()
     else:
         return raw_actual
 
@@ -154,14 +165,14 @@ def run_tests():
         else:
             try:
                 raw_actual = method(*args)
-                check_actual = convert_for_check(test_case, raw_actual)
+                check_actual = convert_for_check(test_case, raw_actual, signature)
                 passed = (check_actual == expected)
                 if passed:
                     passed_tests += 1
                     emojis.append('✅')
                 else:
                     emojis.append('☹️')
-                printable = convert_for_print(test_case, raw_actual, args[0])
+                printable = convert_for_print(test_case, raw_actual, args[0], signature)
                 case_label = f"Case {case_id}"
                 padding = key_width - len(case_label)
                 input_args = []
