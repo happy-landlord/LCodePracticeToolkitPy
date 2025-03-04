@@ -3,10 +3,10 @@ import importlib
 import os
 import sys
 import inspect
-from typing import Any, Dict, List, get_origin, get_args
+from typing import get_origin, get_args
 
-# 从链表模块引入 ListNode
-from libs.linked_list import ListNode
+# 从链表模块引入 ListNode 和 LinkedList
+from libs.linked_list import ListNode, LinkedList
 
 _tests_executed = False
 
@@ -62,6 +62,9 @@ def run_tests():
     method = getattr(solution, method_name)
     signature = inspect.signature(method)
 
+    # 预处理测试用例，特别是处理链表中的环
+    preprocess_test_cases(test_cases, signature)
+
     # 存储所有测试结果和表情符号
     results = []
     emojis = []
@@ -114,9 +117,22 @@ def run_tests():
                 case_label = f"Case {case_id}"
                 padding = key_width - len(case_label)
 
+                # 准备输入参数的可读形式
+                input_args = []
+                for k in signature.parameters.keys():
+                    value = test_case[k]
+                    # 对于链表参数，显示原始列表和位置信息（如果有）
+                    if k == "head" and "pos" in test_case:
+                        if "_original_list" in test_case:
+                            input_args.append(f"{k} = {test_case['_original_list']}, pos = {test_case['pos']}")
+                        else:
+                            input_args.append(f"{k} = [链表], pos = {test_case['pos']}")
+                    else:
+                        input_args.append(f"{k} = {value}")
+
                 case_output = [
                     f"{' ' * padding}{case_label} : {'✅' if passed else '☹️'}",
-                    f"{'Input':>10} : {', '.join(f'{k} = {test_case[k]}' for k in signature.parameters.keys())}",
+                    f"{'Input':>10} : {', '.join(input_args)}",
                     f"{'Expected':>10} : {expected}",
                     f"{'Actual':>10} : {actual}",
                     ""
@@ -140,3 +156,34 @@ def run_tests():
         output.extend(results)
 
     print("\n".join(output))
+
+
+def preprocess_test_cases(test_cases, signature):
+    """
+    预处理测试用例，特别是处理可能含有环的链表
+    """
+    # 检查是否是链表相关题目（方法参数中有 head）
+    has_head_param = False
+    for param_name in signature.parameters:
+        if param_name == "head":
+            has_head_param = True
+            break
+
+    if not has_head_param:
+        return
+
+    for test_case in test_cases:
+        # 处理链表中的环
+        if "head" in test_case and "pos" in test_case:
+            head = test_case["head"]
+            pos = test_case["pos"]
+
+            # 保存原始列表以便报告
+            if isinstance(head, list):
+                test_case["_original_list"] = head.copy()
+
+            # 创建链表并添加环
+            linked_list = LinkedList(head)
+            if pos >= 0:  # 只有当 pos 有效时才添加环
+                linked_list.add_cycle(pos)
+            test_case["head"] = linked_list.head

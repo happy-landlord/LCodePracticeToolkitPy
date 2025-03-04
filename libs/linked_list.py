@@ -109,6 +109,26 @@ class LinkedList:
             index += 1
         current.next = cycle_entry  # 形成环
 
+    def has_cycle(self):
+        """
+        Detect if the linked list has a cycle using Floyd's Tortoise and Hare algorithm.
+        :return: True if a cycle exists, False otherwise
+        """
+        if not self.head or not self.head.next:
+            return False
+
+        slow = self.head
+        fast = self.head
+
+        while fast and fast.next:
+            slow = slow.next
+            fast = fast.next.next
+
+            if slow == fast:
+                return True
+
+        return False
+
 
 #######################
 # 自动补丁逻辑：转换测试用例中的列表为链表
@@ -129,6 +149,16 @@ def patch_test_cases():
                     for key in ['list1', 'list2']:
                         if key in test and isinstance(test[key], list):
                             test[key] = ListNode.from_list(test[key])
+
+        if hasattr(module, 'test_cases') and isinstance(module.test_cases, list):
+            for test in module.test_cases:
+                # Convert "head" to linked list
+                if "head" in test and isinstance(test["head"], list):
+                    linked_list = LinkedList(test["head"])
+                    test["head"] = linked_list.head
+                    # Apply cycle if "pos" exists and is valid
+                    if "pos" in test and test["pos"] != -1:
+                        linked_list.add_cycle(test["pos"])
 
 
 # 在模块加载时自动调用补丁逻辑，确保测试用例的输入都转换成链表
