@@ -1,5 +1,3 @@
-# libs/linked_list.py
-
 class ListNode:
     """
     Definition for singly-linked list.
@@ -48,6 +46,25 @@ class ListNode:
             result.append(current.val)
             current = current.next
         return result
+
+    def to_safe_list(self):
+        """
+        安全地将链表转换为列表，避免由于链表中存在环而导致无限循环。
+        遍历链表时记录每个节点首次出现的索引，如果遇到已访问过的节点，则返回收集到的列表以及循环入口的索引。
+        :return: (list_of_values, cycle_index) 如果没有环则 cycle_index 为 None
+        """
+        result = []
+        seen = {}
+        current = self
+        idx = 0
+        while current:
+            if id(current) in seen:
+                return result, seen[id(current)]
+            seen[id(current)] = idx
+            result.append(current.val)
+            current = current.next
+            idx += 1
+        return result, None
 
 
 class LinkedList:
@@ -102,12 +119,15 @@ class LinkedList:
         cycle_entry = None
         current = self.head
         index = 0
-        while current.next:
+        last = None
+        while current:
             if index == pos:
                 cycle_entry = current
+            last = current
             current = current.next
             index += 1
-        current.next = cycle_entry  # 形成环
+        if last:
+            last.next = cycle_entry  # 形成环
 
     def has_cycle(self):
         """
@@ -116,32 +136,28 @@ class LinkedList:
         """
         if not self.head or not self.head.next:
             return False
-
         slow = self.head
         fast = self.head
-
         while fast and fast.next:
             slow = slow.next
             fast = fast.next.next
-
             if slow == fast:
                 return True
-
         return False
 
 
 #######################
-# 自动补丁逻辑：转换测试用例中的列表为链表
+# 自动补丁逻辑：转换测试用例中的其他列表参数（如 'list1'、'list2'）
 #######################
 
 def patch_test_cases():
     """
-    遍历 sys.modules 中的所有模块，如果模块中定义了 test_cases，
-    则自动将其中 'list1' 和 'list2'（如果为列表）转换为链表（ListNode）。
+    遍历 sys.modules 中的所有模块，
+    如果模块中定义了 test_cases，则自动将其中 'list1' 和 'list2'（如果为列表）转换为链表（ListNode）。
+    注意：这里不转换 head 字段，head 留待 preprocess_test_cases 统一处理。
     """
     import sys
     for module in sys.modules.values():
-        # 模块必须有 test_cases 属性，且 test_cases 为列表
         if hasattr(module, 'test_cases'):
             test_cases = getattr(module, 'test_cases')
             if isinstance(test_cases, list):
@@ -150,16 +166,6 @@ def patch_test_cases():
                         if key in test and isinstance(test[key], list):
                             test[key] = ListNode.from_list(test[key])
 
-        if hasattr(module, 'test_cases') and isinstance(module.test_cases, list):
-            for test in module.test_cases:
-                # Convert "head" to linked list
-                if "head" in test and isinstance(test["head"], list):
-                    linked_list = LinkedList(test["head"])
-                    test["head"] = linked_list.head
-                    # Apply cycle if "pos" exists and is valid
-                    if "pos" in test and test["pos"] != -1:
-                        linked_list.add_cycle(test["pos"])
 
-
-# 在模块加载时自动调用补丁逻辑，确保测试用例的输入都转换成链表
+# 自动调用补丁逻辑
 patch_test_cases()

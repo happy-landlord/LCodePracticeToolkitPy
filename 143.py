@@ -1,15 +1,40 @@
-# 143.py
 from test.test_suite import run_tests
-
 from typing import Optional
 from libs.linked_list import ListNode
 
+
 class Solution:
     def reorderList(self, head: Optional[ListNode]) -> None:
-        """
-        Do not return anything, modify head in-place instead.
-        """
-        pass
+        if not head or not head.next:
+            return
+
+        # Step 1: Find the middle
+        slow = fast = head
+        prev = None
+        while fast and fast.next:
+            prev = slow
+            slow = slow.next
+            fast = fast.next.next
+        prev.next = None  # Split into two lists
+
+        # Step 2: Reverse the second half
+        second = slow
+        prev = None
+        while second:
+            next_node = second.next
+            second.next = prev
+            prev = second
+            second = next_node
+
+        # Step 3: Merge the two halves
+        first = head
+        second = prev
+        while first and second:  # Stop when either list is exhausted
+            tmp1, tmp2 = first.next, second.next
+            first.next = second
+            if tmp1:
+                second.next = tmp1
+            first, second = tmp1, tmp2
 
 
 test_cases = [

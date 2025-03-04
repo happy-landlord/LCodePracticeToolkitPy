@@ -40,37 +40,12 @@ from libs.linked_list import ListNode
 
 class Solution:
     def hasCycle(self, head: ListNode) -> bool:
-        """
-        使用Floyd's龟兔算法（快慢指针）检测链表是否有环
-
-        时间复杂度: O(n)，其中n是链表中的节点数
-        空间复杂度: O(1)，只使用两个指针
-
-        Args:
-            head: 链表的头节点
-
-        Returns:
-            bool: 如果链表中存在环，则返回True；否则返回False
-        """
-        # 空链表或只有一个节点的链表不可能有环
-        if not head or not head.next:
-            return False
-
-        # 设置慢指针和快指针
-        slow = head
-        fast = head
-
-        # 快指针每次走两步，慢指针每次走一步
-        # 如果存在环，快指针最终会追上慢指针
+        slow = fast = head
         while fast and fast.next:
-            slow = slow.next  # 慢指针走一步
-            fast = fast.next.next  # 快指针走两步
-
-            # 如果两个指针相遇，说明存在环
+            slow = slow.next
+            fast = fast.next.next
             if slow == fast:
                 return True
-
-        # 如果快指针到达链表末尾，说明没有环
         return False
 
 
