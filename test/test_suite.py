@@ -2,9 +2,10 @@ import importlib
 import os
 import sys
 import inspect
-from typing import get_origin, get_args, Optional
-
+from typing import get_origin, get_args, Optional, List, Any, get_type_hints
+from collections import deque
 from libs.linked_list import ListNode, LinkedList
+from libs.tree import TreeNode
 
 _tests_executed = False
 
@@ -40,11 +41,73 @@ def convert_result(test_case, actual):
             return actual
 
 
+def is_scalar(obj):
+    """判断对象是否是标量类型（int, float, bool, str 等）"""
+    return isinstance(obj, (int, float, bool, str))
+
+
+def extract_value_for_comparison(actual, expected):
+    """根据 actual 和 expected 的类型提取用于比较的值"""
+    if isinstance(actual, TreeNode) and is_scalar(expected):
+        return actual.val if actual else None
+    return actual
+
+
+def is_tree_node(obj):
+    """采用鸭子类型判断是否是树节点：只要有 val、left、right 属性即可"""
+    return hasattr(obj, "val") and hasattr(obj, "left") and hasattr(obj, "right")
+
+
+def adjust_tree_output(raw_list: List[Optional[Any]], expected: List[Optional[Any]]) -> List[Optional[Any]]:
+    """根据 expected 的格式调整树的层序遍历输出"""
+    if not expected:
+        return []
+
+    # 计算 expected 中的非 None 节点数
+    expected_non_none_count = sum(1 for x in expected if x is not None)
+    raw_non_none_count = sum(1 for x in raw_list if x is not None)
+
+    # 如果非 None 节点数不匹配，直接返回原始结果（避免无效调整）
+    if expected_non_none_count != raw_non_none_count:
+        return raw_list
+
+    # 调整输出长度与 expected 一致
+    expected_len = len(expected)
+    result = raw_list[:expected_len]
+
+    # 如果 raw_list 比 expected 短，填充 None
+    while len(result) < expected_len:
+        result.append(None)
+
+    # 如果 expected 是紧凑格式（末尾无 None），移除多余的 None
+    if expected and expected[-1] is not None:
+        while result and result[-1] is None:
+            result.pop()
+
+    return result
+
+
+def tree_to_list(root: Optional[TreeNode]) -> List[Optional[Any]]:
+    if not root:
+        return []
+    result: List[Optional[Any]] = []
+    queue = deque([root])
+    while queue:
+        node = queue.popleft()
+        if node:
+            result.append(node.val)
+            queue.append(node.left)
+            queue.append(node.right)
+        else:
+            result.append(None)
+    return result  # 不直接移除末尾 None，交给后续处理
+
+
 def convert_for_check(test_case, raw_actual, method_signature):
     expected = test_case["expected"]
     return_annotation = method_signature.return_annotation
 
-    if "pos" in test_case and not isinstance(expected, bool):
+    if "pos" in test_case and not isinstance(test_case["expected"], bool):
         if raw_actual is None:
             return None
         limit = len(test_case["_original_list"])
@@ -58,36 +121,49 @@ def convert_for_check(test_case, raw_actual, method_signature):
         return found
     else:
         if raw_actual is None:
-            # 返回新链表：None 表示空链表
             if return_annotation is ListNode or return_annotation == Optional[ListNode]:
                 return []
-            # 原地修改：检查 head 的当前状态
             if return_annotation is None and "head" in test_case and hasattr(test_case["head"], "to_safe_list"):
                 return test_case["head"].to_safe_list()[0]
-            return []
+            return None
         if isinstance(raw_actual, ListNode):
             return raw_actual.to_safe_list()[0]
-        elif hasattr(raw_actual, "to_list") and callable(raw_actual.to_list):
+        # 针对树的处理
+        if is_tree_node(raw_actual):
+            if is_scalar(expected):  # 如果 expected 是标量，直接返回节点值
+                return raw_actual.val if raw_actual else None
+            raw_list = tree_to_list(raw_actual)
+            return adjust_tree_output(raw_list, expected)  # 保持对列表的支持
+        if hasattr(raw_actual, "to_list") and callable(raw_actual.to_list):
             return raw_actual.to_list()
         else:
             return raw_actual
 
 
 def convert_for_print(test_case, raw_actual, head_arg, method_signature):
-    expected = test_case["expected"]
     return_annotation = method_signature.return_annotation
 
     if raw_actual is None:
-        # 返回新链表：None 表示空链表
         if return_annotation is ListNode or return_annotation == Optional[ListNode]:
             return []
-        # 原地修改：使用传入的 head_arg
+        try:
+            from libs.tree import TreeNode
+            if return_annotation == TreeNode or return_annotation == Optional[TreeNode]:
+                return None if is_scalar(test_case["expected"]) else []
+        except ImportError:
+            pass
         if return_annotation is None and head_arg is not None and hasattr(head_arg, "to_safe_list"):
             return head_arg.to_safe_list()[0]
-        return []
+        return None if is_scalar(test_case["expected"]) else []
+
     if isinstance(raw_actual, ListNode):
         return raw_actual.to_safe_list()[0]
-    elif hasattr(raw_actual, "to_list") and callable(raw_actual.to_list):
+    if is_tree_node(raw_actual):
+        if is_scalar(test_case["expected"]):  # 如果 expected 是标量，返回节点值
+            return raw_actual.val if raw_actual else None
+        raw_list = tree_to_list(raw_actual)
+        return adjust_tree_output(raw_list, test_case["expected"])
+    if hasattr(raw_actual, "to_list") and callable(raw_actual.to_list):
         return raw_actual.to_list()
     else:
         return raw_actual
@@ -136,6 +212,8 @@ def run_tests():
     signature = inspect.signature(method)
 
     preprocess_test_cases(test_cases, signature)
+    # 调用新版预处理函数，利用类型提示完成树形参数转换
+    preprocess_tree_cases(test_cases, method)
 
     results = []
     emojis = []
@@ -178,6 +256,12 @@ def run_tests():
                 input_args = []
                 for k in signature.parameters.keys():
                     value = test_case[k]
+                    try:
+                        from libs.tree import tree_to_list
+                        if is_tree_node(value):
+                            value = tree_to_list(value)
+                    except ImportError:
+                        pass
                     if k == "head" and "_original_list" in test_case:
                         if "pos" in test_case:
                             input_args.append(f"{k} = {test_case['_original_list']}, pos = {test_case['pos']}")
@@ -185,14 +269,13 @@ def run_tests():
                             input_args.append(f"{k} = {test_case['_original_list']}")
                     else:
                         input_args.append(f"{k} = {value}")
-                case_output = [
+                results.extend([
                     f"{' ' * padding}{case_label} : {'✅' if passed else '☹️'}",
                     f"{'Input':>10} : {', '.join(input_args)}",
                     f"{'Expected':>10} : {expected}",
                     f"{'Actual':>10} : {printable}",
                     ""
-                ]
-                results.extend(case_output)
+                ])
             except Exception as e:
                 results.append(f"Error executing {method_name} for test case {case_id}: {e}")
                 emojis.append('☹️')
@@ -216,3 +299,27 @@ def preprocess_test_cases(test_cases, signature):
             if "pos" in test_case and test_case["pos"] != -1:
                 linked_list.add_cycle(test_case["pos"])
             test_case["head"] = linked_list.head
+
+
+def preprocess_tree_cases(test_cases, method):
+    """
+    对测试用例中，如果存在参数其类型为 TreeNode（或 Optional[TreeNode]），
+    则利用函数的类型提示自动转换：
+      - 如果值为列表，则将其转换为二叉树（TreeNode）。
+      - 如果值为整数，则假定该整数表示该树中节点的值，
+        并利用已构造的 root 树查找该节点。
+    """
+    from libs.tree import build_tree_from_list, TreeNode, find_node_by_value
+    hints = get_type_hints(method)
+    for test_case in test_cases:
+        for param, expected_type in hints.items():
+            if expected_type is TreeNode or expected_type == Optional[TreeNode]:
+                if param in test_case:
+                    value = test_case[param]
+                    if isinstance(value, TreeNode):
+                        continue
+                    if isinstance(value, list):
+                        test_case[param] = build_tree_from_list(value)
+                    elif isinstance(value, int):
+                        if "root" in test_case and isinstance(test_case["root"], TreeNode):
+                            test_case[param] = find_node_by_value(test_case["root"], value)
